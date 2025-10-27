@@ -167,12 +167,65 @@ Vercelダッシュボードで以下の環境変数を設定：
 
 ```bash
 GOOGLE_VISION_API_KEY=your_google_vision_api_key
+GOOGLE_CLOUD_API_KEY=your_google_vision_api_key  # どちらでも動作
 AIRTABLE_API_KEY=your_airtable_api_key
 AIRTABLE_BASE_ID=your_airtable_base_id
 AIRTABLE_TABLE_BOOKS=Books
 AIRTABLE_TABLE_STUDENTS=Students
 AIRTABLE_TABLE_LOANS=Loans
+ADMIN_PASSWORD=your_secure_admin_password  # 管理者パスワード
 ```
+
+#### ⚠️ 重要: 環境変数変更後の再デプロイ
+
+Vercelで環境変数を変更した場合、**必ず再デプロイが必要です**：
+
+**方法1: Vercel Dashboard から再デプロイ**
+1. Vercelダッシュボードでプロジェクトを選択
+2. 「Settings」→「Environment Variables」で環境変数を変更
+3. 「Deployments」タブに移動
+4. 最新のデプロイメントの「...」メニューから「Redeploy」をクリック
+5. または、GitHubにプッシュして自動デプロイをトリガー
+
+**方法2: Vercel CLI から再デプロイ**
+```bash
+# プロジェクトディレクトリで実行
+vercel --prod
+```
+
+**方法3: Git プッシュで自動デプロイ**
+```bash
+git commit --allow-empty -m "環境変数の反映のため再デプロイ"
+git push origin main
+```
+
+#### 🔍 環境変数の確認方法
+
+デプロイ後、以下のエンドポイントで環境変数が正しく設定されているか確認できます：
+
+```bash
+# ブラウザまたはcurlでアクセス
+https://your-app-name.vercel.app/api/health
+```
+
+レスポンス例：
+```json
+{
+  "status": "OK",
+  "config": {
+    "hasGoogleVisionKey": true,
+    "hasAirtableKey": true,
+    "hasAirtableBase": true,
+    "hasAdminPassword": true,
+    "adminPasswordLength": 20,
+    "adminPasswordSource": "environment"
+  }
+}
+```
+
+- `hasAdminPassword`: true なら環境変数が設定されている
+- `adminPasswordSource`: "environment" なら環境変数から読み込み、"default" ならデフォルト値
+- `adminPasswordLength`: パスワードの文字数（パスワード自体は表示されません）
 
 ### 3. デプロイ設定
 
@@ -317,6 +370,34 @@ AIRTABLE_TABLE_LOANS=Loans
 2. vercel.json の設定確認
 3. ビルドログの確認
 4. 依存関係の更新
+```
+
+### 管理者パスワードの問題
+```bash
+# 問題: Vercelで管理者パスワードを変更したが反映されない
+# 原因: 環境変数を変更した後、再デプロイしていない
+
+# 解決法:
+1. Vercelダッシュボードで環境変数が正しく設定されているか確認
+   - Settings → Environment Variables
+   - ADMIN_PASSWORD が正しい値になっているか確認
+   - Production/Preview/Development のスコープを確認
+
+2. 再デプロイを実行
+   方法A: Deployments → 最新デプロイの「...」→「Redeploy」
+   方法B: git commit --allow-empty -m "Redeploy" && git push
+   方法C: vercel --prod コマンドを実行
+
+3. /api/health エンドポイントで確認
+   - adminPasswordSource が "environment" になっているか確認
+   - adminPasswordLength が期待する文字数になっているか確認
+
+4. Vercel CLI でログを確認
+   vercel logs [deployment-url] --follow
+
+# ログで以下を確認:
+# "ADMIN_PASSWORD: 設定済み (長さ: XX文字)"
+# が表示されていれば環境変数が正しく読み込まれています
 ```
 
 ## 🔄 更新履歴

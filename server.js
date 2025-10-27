@@ -41,7 +41,7 @@ console.log('  - GOOGLE_VISION_API_KEY:', process.env.GOOGLE_VISION_API_KEY ? '�
 console.log('  - GOOGLE_CLOUD_API_KEY:', process.env.GOOGLE_CLOUD_API_KEY ? '設定済み' : '未設定');
 console.log('  - AIRTABLE_API_KEY:', process.env.AIRTABLE_API_KEY ? '設定済み' : '未設定');
 console.log('  - AIRTABLE_BASE_ID:', process.env.AIRTABLE_BASE_ID ? '設定済み' : '未設定');
-console.log('  - ADMIN_PASSWORD:', process.env.ADMIN_PASSWORD ? '設定済み' : '未設定');
+console.log('  - ADMIN_PASSWORD:', process.env.ADMIN_PASSWORD ? `設定済み (長さ: ${process.env.ADMIN_PASSWORD.length}文字)` : '未設定 (デフォルト値を使用)');
 
 // 貸出ステップの定義
 const LENDING_STEPS = {
@@ -1614,10 +1614,18 @@ app.post('/api/admin/login', (req, res) => {
     const { password } = req.body;
     const adminPassword = process.env.ADMIN_PASSWORD || 'secure_admin_password_2024';
     
+    // デバッグログ（パスワードそのものは出力しない）
+    console.log('🔐 管理者認証試行:');
+    console.log('  - 環境変数ADMIN_PASSWORDの状態:', process.env.ADMIN_PASSWORD ? `設定済み (長さ: ${process.env.ADMIN_PASSWORD.length}文字)` : '未設定 (デフォルト値を使用)');
+    console.log('  - 使用中のパスワード長:', adminPassword.length, '文字');
+    console.log('  - 入力されたパスワード長:', password ? password.length : 0, '文字');
+    
     if (password === adminPassword) {
       req.session.isAdmin = true;
+      console.log('✅ 管理者認証成功');
       res.json({ success: true, message: '認証成功' });
     } else {
+      console.log('❌ 管理者認証失敗 (パスワード不一致)');
       res.status(401).json({ success: false, error: 'パスワードが正しくありません' });
     }
   } catch (error) {
@@ -1878,6 +1886,7 @@ async function registerBookToAirtable(bookData) {
 
 // ヘルスチェック
 app.get('/api/health', (req, res) => {
+  const adminPassword = process.env.ADMIN_PASSWORD || 'secure_admin_password_2024';
   res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
@@ -1885,6 +1894,9 @@ app.get('/api/health', (req, res) => {
       hasGoogleVisionKey: !!config.googleCloud.apiKey,
       hasAirtableKey: !!config.airtable.apiKey,
       hasAirtableBase: !!config.airtable.baseId,
+      hasAdminPassword: !!process.env.ADMIN_PASSWORD,
+      adminPasswordLength: adminPassword.length,
+      adminPasswordSource: process.env.ADMIN_PASSWORD ? 'environment' : 'default',
       tables: {
         books: config.airtable.tables.books,
         students: config.airtable.tables.students,
