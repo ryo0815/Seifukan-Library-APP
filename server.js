@@ -113,12 +113,17 @@ async function extractTextFromImage(base64Image) {
       ]
     };
 
+    // #region agent log
+    writeDebugLog({location:'server.js:vision_api_request',message:'Sending request to Vision API',data:{url: config.googleCloud.apiUrl, keyPrefix: config.googleCloud.apiKey ? config.googleCloud.apiKey.substring(0, 5) : 'missing'},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'});
+    // #endregion
+
     const response = await axios.post(
       `${config.googleCloud.apiUrl}?key=${config.googleCloud.apiKey}`,
       requestBody,
       {
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Referer': 'http://localhost:3000' // APIキー制限対策
         }
       }
     );
@@ -132,6 +137,27 @@ async function extractTextFromImage(base64Image) {
       return '';
     }
   } catch (error) {
+    // #region agent log
+    writeDebugLog({location:'server.js:vision_api_error',message:'Vision API Error',data:{error: error.message, response: error.response?.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'});
+    // #endregion
+    
+    const errorData = error.response?.data;
+    
+    // 課金エラーのチェック
+    if (errorData?.error?.message?.includes('billing to be enabled') || 
+        errorData?.error?.details?.some(d => d.reason === 'BILLING_DISABLED')) {
+      const billingError = new Error('Google Cloud Vision APIの課金設定が無効です。Google Cloud Consoleで課金を有効にしてください。');
+      billingError.code = 'BILLING_DISABLED';
+      throw billingError;
+    }
+    
+    // リファラー制限エラーのチェック
+    if (errorData?.error?.details?.some(d => d.reason === 'API_KEY_HTTP_REFERRER_BLOCKED')) {
+      const refererError = new Error('Google Cloud Vision APIキーの制限によりブロックされました。APIキーの制限設定を確認するか、IPアドレス制限に変更してください。');
+      refererError.code = 'REFERRER_BLOCKED';
+      throw refererError;
+    }
+    
     console.error('❌ Google Cloud Vision API エラー:', error.response?.data || error.message);
     throw error;
   }
@@ -145,6 +171,10 @@ async function searchBookInAirtable(title) {
     console.log('📚 書籍を検索中:', title);
     
     const url = `${config.airtable.baseUrl}/${config.airtable.baseId}/${config.airtable.tables.books}`;
+    
+    // #region agent log
+    writeDebugLog({location:'server.js:airtable_search',message:'Searching Airtable API',data:{url: url, title: title, table: config.airtable.tables.books},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'});
+    // #endregion
     
     const response = await axios.get(url, {
       headers: {
@@ -726,12 +756,30 @@ app.get('/favicon.ico', (req, res) => {
   res.status(204).end();
 });
 
+const fs = require('fs');
+
+// ログ書き込み用関数
+function writeDebugLog(payload) {
+  const logPath = '/Users/Ryo/book-lending-vision/.cursor/debug.log';
+  try {
+    fs.appendFileSync(logPath, JSON.stringify(payload) + '\n');
+  } catch (e) {
+    console.error('Logging failed:', e);
+  }
+}
+
 // ステップ1: 書籍画像をアップロードして検索
 app.post('/api/step1', upload.single('bookImage'), async (req, res) => {
+  // #region agent log
+  writeDebugLog({location:'server.js:step1_entry',message:'Step 1 request received',data:{hasFile: !!req.file, fileSize: req.file ? req.file.size : 0},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'C'});
+  // #endregion
   try {
     console.log('🚀 ステップ1: 書籍検索を開始します');
     
     // 環境変数の確認
+    // #region agent log
+    writeDebugLog({location:'server.js:env_check',message:'Checking env vars',data:{googleKey: !!config.googleCloud.apiKey, airtableKey: !!config.airtable.apiKey, airtableBase: !!config.airtable.baseId},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'D'});
+    // #endregion
     console.log('🔧 環境変数チェック:');
     console.log('  - Google Vision API Key:', !!config.googleCloud.apiKey);
     console.log('  - Airtable API Key:', !!config.airtable.apiKey);
@@ -770,7 +818,13 @@ app.post('/api/step1', upload.single('bookImage'), async (req, res) => {
     
     // 画像からテキストを抽出
     console.log('🔍 Google Vision API でテキスト抽出開始...');
+    // #region agent log
+    writeDebugLog({location:'server.js:before_extract',message:'Calling extractTextFromImage',data:{imageLength: base64Image.length},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'});
+    // #endregion
     const extractedText = await extractTextFromImage(base64Image);
+    // #region agent log
+    writeDebugLog({location:'server.js:after_extract',message:'Extracted text',data:{textLength: extractedText ? extractedText.length : 0, sample: extractedText ? extractedText.substring(0, 50) : null},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'});
+    // #endregion
     if (!extractedText) {
       return res.status(400).json({ 
         success: false, 
@@ -790,9 +844,15 @@ app.post('/api/step1', upload.single('bookImage'), async (req, res) => {
       const trimmedLine = line.trim();
       if (trimmedLine.length > 3) {
         console.log('🔍 書籍検索中:', trimmedLine);
+        // #region agent log
+        writeDebugLog({location:'server.js:before_search',message:'Searching Airtable',data:{query: trimmedLine},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'});
+        // #endregion
         bookFound = await searchBookInAirtable(trimmedLine);
         if (bookFound) {
           console.log('✅ 書籍が見つかりました:', trimmedLine);
+          // #region agent log
+          writeDebugLog({location:'server.js:book_found',message:'Book found',data:{bookId: bookFound.id, fields: bookFound.fields},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'B'});
+          // #endregion
           break;
         }
       }
@@ -845,6 +905,9 @@ app.post('/api/step1', upload.single('bookImage'), async (req, res) => {
     });
 
   } catch (error) {
+    // #region agent log
+    writeDebugLog({location:'server.js:step1_error',message:'Error in step1',data:{errorName: error.name, errorMessage: error.message, stack: error.stack, responseStatus: error.response?.status, responseData: error.response?.data},timestamp:Date.now(),sessionId:'debug-session',runId:'run2',hypothesisId:'A'});
+    // #endregion
     console.error('❌ ステップ1エラー詳細:');
     console.error('  - エラーメッセージ:', error.message);
     console.error('  - エラータイプ:', error.constructor.name);
@@ -853,6 +916,28 @@ app.post('/api/step1', upload.single('bookImage'), async (req, res) => {
     if (error.response) {
       console.error('  - HTTP レスポンス:', error.response.status, error.response.statusText);
       console.error('  - レスポンスデータ:', error.response.data);
+    }
+    
+    if (error.code === 'BILLING_DISABLED') {
+      return res.status(403).json({
+        success: false,
+        message: 'Google Cloud Vision APIの課金設定が無効です。管理者に連絡してください。',
+        error: {
+          type: 'billing_disabled',
+          message: error.message
+        }
+      });
+    }
+    
+    if (error.code === 'REFERRER_BLOCKED') {
+      return res.status(403).json({
+        success: false,
+        message: 'APIキーの制限によりアクセスが拒否されました。管理者に連絡してください。',
+        error: {
+          type: 'referrer_blocked',
+          message: error.message
+        }
+      });
     }
     
     res.status(500).json({
